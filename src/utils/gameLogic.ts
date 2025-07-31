@@ -253,7 +253,7 @@ export function calculateLevelScore(
 /**
  * Save game progress to localStorage
  */
-export function saveGameProgress(gameState: any): void {
+export function saveGameProgress(gameState: object): void {
   try {
     localStorage.setItem('zamboni-game-save', JSON.stringify(gameState));
   } catch (error) {
@@ -264,7 +264,7 @@ export function saveGameProgress(gameState: any): void {
 /**
  * Load game progress from localStorage
  */
-export function loadGameProgress(): any | null {
+export function loadGameProgress(): object | null {
   try {
     const saved = localStorage.getItem('zamboni-game-save');
     return saved ? JSON.parse(saved) : null;

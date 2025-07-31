@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import { GAME_CONFIG } from '@/utils/constants';
 
 export function useGameLoop(
   gameTick: (deltaTime: number) => void,

@@ -2,15 +2,14 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { GameState, GameStatus, ZamboniState } from '@/types/game';
-import { GAME_LEVELS, GAME_CONFIG } from '@/utils/constants';
+import { GAME_LEVELS } from '@/utils/constants';
 import { 
   initializeIceGrid, 
   cleanIceCells, 
   calculateCleanPercentage,
   updateZamboniPosition,
   calculateLevelScore,
-  saveGameProgress,
-  loadGameProgress
+  saveGameProgress
 } from '@/utils/gameLogic';
 
 export function useGameState() {
