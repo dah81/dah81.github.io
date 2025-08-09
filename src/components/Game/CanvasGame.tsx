@@ -481,9 +481,10 @@ export default function CanvasGame({ levelId }: Props) {
         {/* Mini HUD (restored) */}
         {!completed && (
           <div className="absolute top-1 left-1 bg-white/80 backdrop-blur-sm rounded px-2 py-1 shadow text-[10px] leading-tight font-pixel text-blue-900 pointer-events-none select-none">
-            <div className="font-semibold truncate max-w-[140px]">{level.name}</div>
+            <div className="font-semibold truncate max-w-[160px]">{level.name}</div>
             <div>
               <span className="opacity-70">Time:</span> {state.elapsed.toFixed(1)}s{" "}
+              <span className="ml-2 opacity-70">Clean:</span> {state.cleanedPercent.toFixed(1)}%{" "}
               <span className="ml-2 opacity-70">Bumps:</span> {state.bumpCount}
             </div>
           </div>

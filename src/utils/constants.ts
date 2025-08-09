@@ -5,10 +5,11 @@ export const DT = 1 / TICK_RATE;
 export const BOOST_TICKS = Math.floor(0.25 * TICK_RATE); // 250ms
 
 // Movement tuning (rolled back to original balanced feel)
-export const MAX_SPEED = 120; // world units per second (lower to reduce slide)
-export const BOOST_EXTRA = 50;
-export const ACCEL = 210; // a bit snappier throttle to feel more responsive
-export const FRICTION = 130; // stronger overall decel to curb drift
+// Slight incremental speed tweak: modestly higher top speed & acceleration.
+export const MAX_SPEED = 128; // was 120 (~+6.7%)
+export const BOOST_EXTRA = 52; // was 50 (scaled with top speed)
+export const ACCEL = 225; // was 210 (~+7%)
+export const FRICTION = 131; // tiny bump to keep control similar
 export const TURN_RATE = Math.PI * 1.2; // slightly quicker steering
 
 // Extra damping applied specifically to lateral (sideways) velocity per second
