@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <!-- Rounded square backdrop for better browser tab legibility -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#0f2754"/>
+  <!-- Ice shine gradient -->
+  <defs>
+    <linearGradient id="ice" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#e8f4ff"/>
+      <stop offset="100%" stop-color="#c2dcf4"/>
+    </linearGradient>
+    <linearGradient id="zTop" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#d5e2f7" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="zBlue" x1="0" y1="24" x2="0" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1b5fcf"/>
+      <stop offset="100%" stop-color="#0f3e85"/>
+    </linearGradient>
+    <filter id="innerShadow" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feOffset dx="0" dy="1"/>
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2" result="blur"/>
+      <feComposite in="blur" in2="SourceAlpha" operator="out" result="inverse"/>
+      <feFlood flood-color="#06142c" flood-opacity="0.55"/>
+      <feComposite operator="in" in2="inverse"/>
+      <feComposite in="SourceGraphic"/>
+    </filter>
+  </defs>
+
+  <!-- Ice patch subtle -->
+  <rect x="6" y="38" width="52" height="12" rx="5" fill="url(#ice)" opacity="0.85" />
+
+  <!-- Zamboni group scaled to fit center -->
+  <g transform="translate(12,14)">
+    <!-- Wheels -->
+    <circle cx="8" cy="28" r="5" fill="#1c1c1c" stroke="#555" stroke-width="1"/>
+    <circle cx="32" cy="28" r="5" fill="#1c1c1c" stroke="#555" stroke-width="1"/>
+
+    <!-- Lower body -->
+    <rect x="0" y="14" width="40" height="18" rx="3" fill="url(#zBlue)" stroke="#0a254d" stroke-width="1.2" filter="url(#innerShadow)"/>
+
+    <!-- Top cab -->
+    <rect x="10" y="6" width="22" height="13" rx="2" fill="url(#zTop)" stroke="#2a4d79" stroke-width="1"/>
+
+    <!-- Window -->
+    <rect x="18" y="8" width="10" height="9" rx="1.5" fill="#bfe7ff" stroke="#0d386e" stroke-width="1"/>
+    <rect x="18.5" y="8.5" width="9" height="8" rx="1" fill="#d6f2ff" stroke="#89bfe0" stroke-width="0.4" opacity="0.6"/>
+
+    <!-- Light strip -->
+    <rect x="2" y="16" width="3" height="8" rx="1" fill="#ffe790" stroke="#d4a736" stroke-width="0.8"/>
+
+    <!-- Squeegee / conditioner -->
+    <rect x="-2" y="14" width="4" height="18" rx="1" fill="#223044" stroke="#0a1828" stroke-width="0.7"/>
+
+    <!-- Accent stripe -->
+    <rect x="0" y="25" width="40" height="3" fill="#ffffff" opacity="0.5"/>
+  </g>
+
+  <!-- Sparkle highlights -->
+  <g stroke="#ffffff" stroke-linecap="round" stroke-width="1">
+    <line x1="20" y1="10" x2="20" y2="10" />
+    <line x1="46" y1="16" x2="46" y2="16" />
+    <line x1="30" y1="50" x2="30" y2="50" />
+  </g>
+</svg>
