@@ -4,6 +4,7 @@ export const TICK_RATE = 60; // Hz
 export const DT = 1 / TICK_RATE;
 export const BOOST_TICKS = Math.floor(0.25 * TICK_RATE); // 250ms
 
+// Movement tuning (rolled back to original balanced feel)
 export const MAX_SPEED = 120; // world units per second (lower to reduce slide)
 export const BOOST_EXTRA = 50;
 export const ACCEL = 210; // a bit snappier throttle to feel more responsive

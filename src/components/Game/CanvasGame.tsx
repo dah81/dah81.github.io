@@ -91,12 +91,16 @@ export default function CanvasGame({ levelId }: Props) {
     } catch {}
   }, [completed, isFinalLevel]);
 
-  // Record initial dirt level when level changes
-  // We intentionally compute this only when the level id changes, not on every dirt mutation during play
+  // Record initial dirt level when level changes (deriving from a fresh level definition)
   useEffect(() => {
-    initialDirtAvgRef.current = computeGridAvg(state.level.dirt);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.level.id]);
+    try {
+      const fresh = findLevel(levelId); // original pristine level
+      initialDirtAvgRef.current = computeGridAvg(fresh.dirt);
+    } catch {
+      // fallback: use current state version
+      initialDirtAvgRef.current = computeGridAvg(state.level.dirt);
+    }
+  }, [levelId, state.level.dirt]);
 
   // Responsive sizing: fill viewport while preserving aspect ratio.
   const [size, setSize] = useState(() => ({ w: 640, h: 360 }));
@@ -124,13 +128,10 @@ export default function CanvasGame({ levelId }: Props) {
     return () => window.removeEventListener("resize", computeSize);
   }, [level.rink.width, level.rink.height]);
 
-  // Build Zamboni sprite frames once on mount (8 directions x 2 animation frames)
+  // Build Zamboni sprite frames when dimensions change (should normally be once)
   useEffect(() => {
-    const len = state.z.length;
-    const wid = state.z.width;
-    zFramesRef.current = buildZamboniSprites(len, wid, 2);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    zFramesRef.current = buildZamboniSprites(state.z.length, state.z.width, 2);
+  }, [state.z.length, state.z.width]);
 
   // Load/save effects toggle
   useEffect(() => {
