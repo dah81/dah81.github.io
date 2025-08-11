@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { paths } from "@/utils/paths";
 // import { useRouter } from "next/navigation"; // router not needed after removing auto-return
@@ -54,6 +54,18 @@ export default function CanvasGame({ levelId }: Props) {
   const particlesRef = useRef<FXParticle[]>([]);
   const trailRef = useRef<FXTrailPoint[]>([]);
   const [effectsOn, setEffectsOn] = useState(true);
+  // First-time touch users hint
+  const [showDragHint, setShowDragHint] = useState(false);
+  const showDragHintRef = useRef(false);
+  useEffect(() => {
+    showDragHintRef.current = showDragHint;
+  }, [showDragHint]);
+  const dismissHint: () => void = useCallback(() => {
+    try {
+      localStorage.setItem("zamboni.hint.drag.v1", "1");
+    } catch {}
+    setShowDragHint(false);
+  }, []);
   // Celebration
   type Confetti = {
     x: number;
@@ -146,6 +158,18 @@ export default function CanvasGame({ levelId }: Props) {
     } catch {}
   }, [effectsOn]);
 
+  // Show drag hint once for mobile users only (iOS/Android UA)
+  useEffect(() => {
+    const isMobile =
+      typeof navigator !== "undefined" &&
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+    if (!isMobile) return;
+    const dismissed =
+      typeof window !== "undefined" &&
+      "localStorage" in window &&
+      window.localStorage.getItem("zamboni.hint.drag.v1") === "1";
+    if (!dismissed) setShowDragHint(true);
+  }, []);
   // Input state via touch/mouse drag
   const drag = useRef<{
     active: boolean;
@@ -181,14 +205,28 @@ export default function CanvasGame({ levelId }: Props) {
     };
 
     const move = (e: TouchEvent | MouseEvent) => {
+      // Auto-dismiss touch hint on first interaction
+      if (showDragHintRef.current) dismissHint();
+      if ("preventDefault" in e) {
+        try {
+          (e as Event).preventDefault();
+        } catch {}
+      }
       if (!drag.current) return;
       const p = "touches" in e ? getPos(e.touches[0]) : getPos(e as MouseEvent);
       const dx = p.x - drag.current.startX;
       const dy = p.y - drag.current.startY;
       const out = fromInputDrag(dx, dy);
+      // Always assert active=true during drag to avoid races where active resets to false
+      // (observed on mobile when touchmove state updates interleave with touchstart)
       setState((s) => ({
         ...s,
-        input: { ...s.input, dir: { x: out.dir.x, y: out.dir.y }, strength: out.strength },
+        input: {
+          ...s.input,
+          active: true,
+          dir: { x: out.dir.x, y: out.dir.y },
+          strength: out.strength,
+        },
       }));
       drag.current.lastX = p.x;
       drag.current.lastY = p.y;
@@ -219,15 +257,18 @@ export default function CanvasGame({ levelId }: Props) {
       drag.current = null;
     };
 
+    // Use passive:false for move so the browser doesn't treat it as scroll; helps iOS Safari
     el.addEventListener("touchstart", start, { passive: true });
-    el.addEventListener("touchmove", move, { passive: true });
+    el.addEventListener("touchmove", move, { passive: false });
     el.addEventListener("touchend", end);
+
     const onMouseDown = (ev: MouseEvent) => start(ev);
     const onMouseMove = (ev: MouseEvent) => move(ev);
     const onMouseUp = (ev: MouseEvent) => end(ev);
     el.addEventListener("mousedown", onMouseDown);
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
+
     return () => {
       el.removeEventListener("touchstart", start);
       el.removeEventListener("touchmove", move);
@@ -236,7 +277,7 @@ export default function CanvasGame({ levelId }: Props) {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, []);
+  }, [dismissHint]);
 
   // Keyboard input (desktop): WASD/Arrows for direction, Space for boost
   useEffect(() => {
@@ -477,6 +518,53 @@ export default function CanvasGame({ levelId }: Props) {
               : size.h
           }
         />
+
+        {/* Touch hint: show once for touch users, dismissable */}
+        {showDragHint && !completed && (
+          <div className="absolute bottom-2 left-2 pointer-events-none">
+            <div
+              className="pointer-events-auto pixel-card bg-white/90 backdrop-blur-sm rounded shadow px-2 py-2 max-w-[220px] text-[11px] font-pixel text-blue-900 border border-blue-900/30"
+              onTouchStart={dismissHint}
+              onMouseDown={dismissHint}
+            >
+              <div className="flex items-start gap-2">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                  className="flex-shrink-0 opacity-80"
+                >
+                  <path d="M2 12h14" stroke="#0b2147" strokeWidth="2" strokeLinecap="round" />
+                  <path
+                    d="M12 4l8 8-8 8"
+                    fill="none"
+                    stroke="#1a4fa3"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <div className="leading-snug">
+                  Drag anywhere to drive.
+                  <br />
+                  Short drag steers; longer drag goes faster.
+                  <br />
+                  Flick to boost.
+                </div>
+              </div>
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  className="px-2 py-0.5 pixel-button rounded"
+                  onClick={dismissHint}
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Mini HUD (restored) */}
         {!completed && (

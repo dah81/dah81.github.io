@@ -180,9 +180,11 @@ export const toScreen = (
 
 export const fromInputDrag = (dx: number, dy: number) => {
   const l = Math.hypot(dx, dy);
-  if (l < 8) return { dir: { x: 1, y: 0 }, strength: 0 };
+  // Lower deadzone for mobile; tiny drags still count
+  if (l < 5) return { dir: { x: 1, y: 0 }, strength: 0 };
   const dir = { x: dx / l, y: dy / l };
-  const strength = clamp(l / 120, 0, 1);
+  // Reach full throttle with shorter drag distance
+  const strength = clamp(l / 80, 0, 1);
   return { dir, strength };
 };
 
