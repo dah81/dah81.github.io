@@ -382,8 +382,8 @@ export default function CanvasGame({ levelId }: Props) {
         const initAvg = initialDirtAvgRef.current || computeGridAvg(next.level.dirt);
         const par = computePar(next.level.rink.width, next.level.rink.height, initAvg);
         setParTime(par);
-        // Apply bump-based modifier: slight penalty tiers
-        const bumpPenalty = next.bumpCount <= 1 ? 0 : next.bumpCount <= 3 ? 0.05 : 0.12;
+        // Apply bump-based modifier: slight penalty tiers (softer)
+        const bumpPenalty = next.bumpCount <= 1 ? 0 : next.bumpCount <= 3 ? 0.03 : 0.08;
         const g = computeGrade(next.elapsed * (1 + bumpPenalty), par);
         setGrade(g);
         // Persist and fetch best time
@@ -1525,9 +1525,9 @@ function computePar(w: number, h: number, initAvg: number) {
 }
 
 function computeGrade(timeSec: number, par: number) {
-  // Three-tier results from best to worst
-  if (timeSec <= par * 0.9) return "Cup winner";
-  if (timeSec <= par * 1.15) return "Playoff contender";
+  // Looser thresholds so more players hit mid/high tiers
+  if (timeSec <= par * 1.0) return "Cup winner"; // at or under par
+  if (timeSec <= par * 1.25) return "Playoff contender";
   return "Team rebuild";
 }
 
