@@ -716,6 +716,8 @@ function drawPixelPerfect(
   // Draw scene
   drawRink(bctx, state);
   drawDirt(bctx as unknown as CanvasRenderingContext2D, state);
+  // Sheen: subtle reflective noise over clean areas (lighter where cleaner)
+  applyCleanSheen(bctx as unknown as CanvasRenderingContext2D, state);
   if (effectsOn) {
     drawGlossTrail(bctx as unknown as CanvasRenderingContext2D, state, trail || []);
     drawParticles(bctx as unknown as CanvasRenderingContext2D, particles || []);
@@ -965,34 +967,30 @@ function drawGoal(ctx: CanvasRenderingContext2D, o: GoalOpts) {
 }
 
 function drawDirt(ctx: CanvasRenderingContext2D, state: GameState) {
+  // High-contrast dirt: solid dark gray pixels with occasional 2x2 clusters at low density.
   const { grime } = PALETTE;
   const grid = state.level.dirt;
   const cellW = state.level.rink.width / grid.cols;
   const cellH = state.level.rink.height / grid.rows;
-  // 3x3 Bayer matrix (0..8) for chunkier ordered dithering
   const bayer3 = [0, 7, 3, 6, 5, 2, 4, 1, 8];
-  const SUB = 3; // sub-cells per axis
+  const SUB = 3;
   ctx.save();
   ctx.fillStyle = grime;
-  ctx.globalAlpha = 1; // crisp pixels; density controlled by dither
   for (let ty = 0; ty < grid.rows; ty++) {
     for (let tx = 0; tx < grid.cols; tx++) {
-      const tIdx = ty * grid.cols + tx;
-      const d = grid.tile[tIdx];
-      if (d <= 0.005) continue;
-      // Threshold count 0..9
+      const idx = ty * grid.cols + tx;
+      const d = grid.tile[idx];
+      if (d <= 0.004) continue;
       const thresh = Math.max(0, Math.min(8, Math.floor(d * 9)));
       if (thresh <= 0) continue;
-      // Slight per-tile permutation to avoid visible tiling
-      const salt = ((tx * 73856093) ^ (ty * 19349663)) % 9; // cycle within 0..8
+      const salt = ((tx * 73856093) ^ (ty * 19349663)) % 9;
       for (let sy = 0; sy < SUB; sy++) {
         for (let sx = 0; sx < SUB; sx++) {
-          const mIdx = (sy * SUB + sx + salt) % 9;
-          if (bayer3[mIdx] < thresh) {
+          const m = (sy * SUB + sx + salt) % 9;
+          if (bayer3[m] < thresh) {
             const wx = tx * cellW + (sx + 0.5) * (cellW / SUB);
             const wy = ty * cellH + (sy + 0.5) * (cellH / SUB);
             const sp = snapPoint(ctx, wx, wy);
-            // draw a single pixel
             ctx.fillRect(sp.x, sp.y, 1, 1);
           }
         }
@@ -1042,6 +1040,40 @@ function drawConfetti(
     ctx.globalAlpha = 0.9;
     ctx.fillStyle = c.color;
     ctx.fillRect(sp.x, sp.y, 1, 1);
+  }
+  ctx.restore();
+}
+
+// Adds a faint reflective sheen correlated with cleanliness (less dirt -> more sheen)
+function applyCleanSheen(ctx: CanvasRenderingContext2D, state: GameState) {
+  const grid = state.level.dirt;
+  const cols = grid.cols;
+  const rows = grid.rows;
+  const cellW = state.level.rink.width / cols;
+  const cellH = state.level.rink.height / rows;
+  ctx.save();
+  ctx.globalAlpha = 0.07; // very subtle
+  ctx.fillStyle = "#ffffff";
+  const time = state.elapsed;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const idx = y * cols + x;
+      const dirt = grid.tile[idx]; // 0 clean .. 1 dirty
+      if (dirt > 0.4) continue; // skip noticeably dirty cells
+      // Noise modulation for sparkle scatter
+      const hash = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+      const sparklePhase = (hash % 1000) / 1000;
+      const t = (time * 0.25 + sparklePhase) % 1;
+      if (t > 0.08) continue; // brief twinkle
+      // Sheen intensity higher when cleaner
+      const intensity = (1 - dirt) * (1 - t / 0.08);
+      if (intensity <= 0.15) continue;
+      ctx.globalAlpha = 0.08 * intensity;
+      const cx = x * cellW + cellW * 0.5;
+      const cy = y * cellH + cellH * 0.5;
+      const sp = snapPoint(ctx, cx, cy);
+      ctx.fillRect(sp.x, sp.y, 1, 1);
+    }
   }
   ctx.restore();
 }

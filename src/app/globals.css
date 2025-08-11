@@ -58,20 +58,23 @@ canvas {
   content: "";
   position: absolute;
   inset: 0;
+  /* Use subtle white scanlines with screen blend to brighten light tones (ice looks whiter) */
   background: repeating-linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.05),
-    rgba(0, 0, 0, 0.05) 2px,
-    rgba(0, 0, 0, 0.02) 2px,
-    rgba(0, 0, 0, 0.02) 4px
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.06) 2px,
+    rgba(255, 255, 255, 0.02) 2px,
+    rgba(255, 255, 255, 0.02) 4px
   );
+  mix-blend-mode: screen;
   pointer-events: none;
 }
 .crt-vignette::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, 0.25) 100%);
+  /* Lighten the vignette to avoid dulling whites too much */
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, 0.14) 100%);
   pointer-events: none;
 }
 

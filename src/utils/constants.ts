@@ -21,9 +21,10 @@ export const DEFAULT_ZAMBONI = {
 };
 
 export const PALETTE: Palette = {
-  iceLight: "#f6fbff",
-  iceDark: "#e9f6ff",
-  grime: "#8d8f95",
+  // High contrast: pure white ice + neutral mid gray dirt
+  iceLight: "#ffffff",
+  iceDark: "#f2f7ff", // faint cool tint for subtle depth
+  grime: "#5c5c5c", // darker neutral gray for stronger contrast
   board: "#0a1a2a",
   lineRed: "#d64949",
   lineBlue: "#3b6ac9",
