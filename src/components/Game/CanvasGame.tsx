@@ -1593,9 +1593,9 @@ function computePar(w: number, h: number, initAvg: number) {
 }
 
 function computeGrade(timeSec: number, par: number) {
-  // More generous thresholds so mid/high tiers are commonly attainable
-  if (timeSec <= par * 1.1) return "Cup winner"; // within 110% of par
-  if (timeSec <= par * 1.5) return "Playoff contender"; // within 150% of par
+  // Nudge thresholds: Cup at 115% of par, Playoff at 160% of par
+  if (timeSec <= par * 1.15) return "Cup winner"; // within 115% of par
+  if (timeSec <= par * 1.6) return "Playoff contender"; // within 160% of par
   return "Team rebuild";
 }
 
