@@ -66,6 +66,18 @@ export default function CanvasGame({ levelId }: Props) {
     } catch {}
     setShowDragHint(false);
   }, []);
+  // First-time desktop users hint (arrow keys / space)
+  const [showKeysHint, setShowKeysHint] = useState(false);
+  const showKeysHintRef = useRef(false);
+  useEffect(() => {
+    showKeysHintRef.current = showKeysHint;
+  }, [showKeysHint]);
+  const dismissKeysHint: () => void = useCallback(() => {
+    try {
+      localStorage.setItem("zamboni.hint.keys.v1", "1");
+    } catch {}
+    setShowKeysHint(false);
+  }, []);
   // Celebration
   type Confetti = {
     x: number;
@@ -170,6 +182,26 @@ export default function CanvasGame({ levelId }: Props) {
       window.localStorage.getItem("zamboni.hint.drag.v1") === "1";
     if (!dismissed) setShowDragHint(true);
   }, []);
+  // Show keys hint once for desktop users only
+  useEffect(() => {
+    const isMobile =
+      typeof navigator !== "undefined" &&
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+    if (isMobile) return;
+    const dismissed =
+      typeof window !== "undefined" &&
+      "localStorage" in window &&
+      window.localStorage.getItem("zamboni.hint.keys.v1") === "1";
+    if (!dismissed) setShowKeysHint(true);
+  }, []);
+  // Auto-dismiss keys hint on first key press
+  useEffect(() => {
+    const onAnyKey = () => {
+      if (showKeysHintRef.current) dismissKeysHint();
+    };
+    window.addEventListener("keydown", onAnyKey);
+    return () => window.removeEventListener("keydown", onAnyKey);
+  }, [dismissKeysHint]);
   // Input state via touch/mouse drag
   const drag = useRef<{
     active: boolean;
@@ -558,6 +590,31 @@ export default function CanvasGame({ levelId }: Props) {
                   type="button"
                   className="px-2 py-0.5 pixel-button rounded"
                   onClick={dismissHint}
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Desktop keyboard hint: show once for desktop users, dismissable */}
+        {showKeysHint && !completed && (
+          <div className="absolute bottom-2 left-2 pointer-events-none">
+            <div
+              className="pointer-events-auto pixel-card bg-white/90 backdrop-blur-sm rounded shadow px-2 py-2 max-w-[240px] text-[11px] font-pixel text-blue-900 border border-blue-900/30"
+              onMouseDown={dismissKeysHint}
+            >
+              <div className="leading-snug">
+                Use arrow keys or WASD to drive.
+                <br />
+                Press Space to boost.
+              </div>
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  className="px-2 py-0.5 pixel-button rounded"
+                  onClick={dismissKeysHint}
                 >
                   Got it
                 </button>
@@ -1091,9 +1148,11 @@ function drawDirt(ctx: CanvasRenderingContext2D, state: GameState) {
 function drawGlossTrail(ctx: CanvasRenderingContext2D, state: GameState, trail: FXTrailPoint[]) {
   if (trail.length < 2) return;
   ctx.save();
-  ctx.globalAlpha = 0.12;
+  // Brighter, slightly thicker to read as a glossy clean path
+  ctx.globalAlpha = 0.22;
   ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = Math.max(1, Math.min(state.level.rink.width, state.level.rink.height) * 0.004);
+  // Keep gloss narrow so it doesn't look like a wider cleaning path
+  ctx.lineWidth = Math.max(1, Math.min(state.level.rink.width, state.level.rink.height) * 0.006);
   ctx.beginPath();
   for (let i = 0; i < trail.length; i++) {
     const p = trail[i];
@@ -1108,11 +1167,13 @@ function drawGlossTrail(ctx: CanvasRenderingContext2D, state: GameState, trail: 
 function drawParticles(ctx: CanvasRenderingContext2D, parts: { x: number; y: number }[]) {
   if (parts.length === 0) return;
   ctx.save();
-  ctx.fillStyle = "#eefaff";
+  // Brighter sparkle pixels
+  ctx.fillStyle = "#ffffff";
   for (const p of parts) {
     const sp = snapPoint(ctx, p.x, p.y);
-    ctx.globalAlpha = 0.8;
-    ctx.fillRect(sp.x, sp.y, 1, 1);
+    ctx.globalAlpha = 0.95;
+    // Slightly larger imprint (2x2) for better visibility at scale
+    ctx.fillRect(sp.x, sp.y, 2, 2);
   }
   ctx.restore();
 }
@@ -1140,7 +1201,7 @@ function applyCleanSheen(ctx: CanvasRenderingContext2D, state: GameState) {
   const cellW = state.level.rink.width / cols;
   const cellH = state.level.rink.height / rows;
   ctx.save();
-  ctx.globalAlpha = 0.07; // very subtle
+  ctx.globalAlpha = 0.1; // slightly more visible
   ctx.fillStyle = "#ffffff";
   const time = state.elapsed;
   for (let y = 0; y < rows; y++) {
@@ -1151,16 +1212,16 @@ function applyCleanSheen(ctx: CanvasRenderingContext2D, state: GameState) {
       // Noise modulation for sparkle scatter
       const hash = ((x * 73856093) ^ (y * 19349663)) >>> 0;
       const sparklePhase = (hash % 1000) / 1000;
-      const t = (time * 0.25 + sparklePhase) % 1;
-      if (t > 0.08) continue; // brief twinkle
+      const t = (time * 0.22 + sparklePhase) % 1;
+      if (t > 0.12) continue; // a touch longer twinkle
       // Sheen intensity higher when cleaner
       const intensity = (1 - dirt) * (1 - t / 0.08);
-      if (intensity <= 0.15) continue;
-      ctx.globalAlpha = 0.08 * intensity;
+      if (intensity <= 0.12) continue;
+      ctx.globalAlpha = 0.12 * intensity;
       const cx = x * cellW + cellW * 0.5;
       const cy = y * cellH + cellH * 0.5;
       const sp = snapPoint(ctx, cx, cy);
-      ctx.fillRect(sp.x, sp.y, 1, 1);
+      ctx.fillRect(sp.x, sp.y, 2, 2);
     }
   }
   ctx.restore();
@@ -1169,29 +1230,29 @@ function applyCleanSheen(ctx: CanvasRenderingContext2D, state: GameState) {
 function drawSparkleSweep(ctx: CanvasRenderingContext2D, state: GameState, completedAt: number) {
   const now = typeof performance !== "undefined" ? performance.now() : 0;
   const elapsed = Math.max(0, now - completedAt);
-  const dur = 1100; // ms
+  const dur = 1300; // ms, slightly longer
   if (elapsed > dur) return;
   const t = elapsed / dur; // 0..1
   const { width, height } = state.level.rink;
   // Moving vertical band across rink
   const bandX = width * (t * 1.1 - 0.05);
-  const bandW = Math.max(6, width * 0.04);
+  const bandW = Math.max(8, width * 0.05);
   const g = ctx.createLinearGradient(bandX - bandW, 0, bandX + bandW, 0);
   g.addColorStop(0, "rgba(255,255,255,0)");
-  g.addColorStop(0.5, "rgba(255,255,255,0.15)");
+  g.addColorStop(0.5, "rgba(255,255,255,0.22)");
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.save();
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, width, height);
   // Sprinkle sparkles along the band
   ctx.fillStyle = "#ffffff";
-  ctx.globalAlpha = 0.8;
-  const count = 40;
+  ctx.globalAlpha = 0.95;
+  const count = 64;
   for (let i = 0; i < count; i++) {
     const yy = (i / count) * height;
     const xx = bandX + (Math.random() - 0.5) * bandW * 1.2;
     const sp = snapPoint(ctx, xx, yy);
-    ctx.fillRect(sp.x, sp.y, 1, 1);
+    ctx.fillRect(sp.x, sp.y, 2, 2);
   }
   ctx.restore();
 }
@@ -1453,8 +1514,11 @@ function updateEffects(
   trailRef: React.MutableRefObject<FXTrailPoint[]>,
 ) {
   const now = performance.now();
-  const MAX_PARTICLES = 220;
+  const MAX_PARTICLES = 320;
   const squeegee = getSqueegeePos(state);
+  // Lateral unit vector (perpendicular to heading) to spread sparkle band wider than gloss
+  const nx = -Math.sin(state.z.heading);
+  const ny = Math.cos(state.z.heading);
   // Update trail (keep ~600ms)
   const trail = trailRef.current;
   trail.push({ x: squeegee.x, y: squeegee.y, t: now });
@@ -1472,21 +1536,25 @@ function updateEffects(
 
   // Emit based on speed and dirt
   const speed = Math.hypot(state.z.vel.x, state.z.vel.y);
-  const baseRate = speed * 0.02; // world/sec -> particles/frame scale
-  const dirtBoost = 6 * dirt;
-  const toEmit = Math.min(6, baseRate + dirtBoost);
+  const baseRate = speed * 0.03; // slightly more from speed
+  const dirtBoost = 8 * dirt; // stronger emission on dirt
+  const toEmit = Math.min(10, baseRate + dirtBoost);
   const parts = particlesRef.current;
   for (let i = 0; i < toEmit; i++) {
     if (parts.length >= MAX_PARTICLES) break;
     const ang = state.z.heading + Math.PI + (Math.random() - 0.5) * 0.6;
-    const spd = 20 + Math.random() * 30;
+    const spd = 24 + Math.random() * 36;
+    // Spread particles across most of the Zamboni width (not full width)
+    const lateral = (Math.random() - 0.5) * (state.z.width * 0.75);
+    const px = squeegee.x + nx * lateral;
+    const py = squeegee.y + ny * lateral;
     parts.push({
-      x: squeegee.x,
-      y: squeegee.y,
+      x: px,
+      y: py,
       vx: Math.cos(ang) * spd,
       vy: Math.sin(ang) * spd,
       life: 0,
-      max: 300 + Math.random() * 400,
+      max: 420 + Math.random() * 520,
     });
   }
   // Integrate particles
