@@ -184,7 +184,7 @@ export const fromInputDrag = (dx: number, dy: number) => {
   if (l < 5) return { dir: { x: 1, y: 0 }, strength: 0 };
   const dir = { x: dx / l, y: dy / l };
   // Reach full throttle with shorter drag distance
-  const strength = clamp(l / 80, 0, 1);
+  const strength = clamp(l / 50, 0, 1);
   return { dir, strength };
 };
 

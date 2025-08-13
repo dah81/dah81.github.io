@@ -49,6 +49,13 @@ export default function CanvasGame({ levelId }: Props) {
   const accRef = useRef(0); // seconds
   const stateRef = useRef<GameState>(state);
   const fxTimeMsRef = useRef(0); // effects clock in ms
+  // Desired input written by touch/mouse handlers; consumed each frame
+  const desiredInputRef = useRef<{
+    active: boolean;
+    dir: { x: number; y: number };
+    strength: number;
+  }>({ active: false, dir: { x: 1, y: 0 }, strength: 0 });
+  const boostAddRef = useRef(0);
   // Live refs for values used inside the rAF loop
   const effectsOnRef = useRef(effectsOn);
   useEffect(() => {
@@ -248,7 +255,7 @@ export default function CanvasGame({ levelId }: Props) {
         lastY: p.y,
         lastTime: t,
       };
-      setState((s) => ({ ...s, input: { ...s.input, active: true } }));
+      desiredInputRef.current.active = true;
     };
 
     const move = (e: TouchEvent | MouseEvent) => {
@@ -264,17 +271,11 @@ export default function CanvasGame({ levelId }: Props) {
       const dx = p.x - drag.current.startX;
       const dy = p.y - drag.current.startY;
       const out = fromInputDrag(dx, dy);
-      // Always assert active=true during drag to avoid races where active resets to false
-      // (observed on mobile when touchmove state updates interleave with touchstart)
-      setState((s) => ({
-        ...s,
-        input: {
-          ...s.input,
-          active: true,
-          dir: { x: out.dir.x, y: out.dir.y },
-          strength: out.strength,
-        },
-      }));
+      desiredInputRef.current = {
+        active: true,
+        dir: { x: out.dir.x, y: out.dir.y },
+        strength: out.strength,
+      };
       drag.current.lastX = p.x;
       drag.current.lastY = p.y;
       drag.current.lastTime = performance.now();
@@ -292,15 +293,9 @@ export default function CanvasGame({ levelId }: Props) {
       const v = Math.hypot(vx, vy);
       // Flick threshold
       const isFlick = v > 0.8;
-      setState((s) => ({
-        ...s,
-        input: {
-          ...s.input,
-          active: false,
-          strength: 0,
-          boostTicks: isFlick ? s.input.boostTicks + 15 : s.input.boostTicks,
-        },
-      }));
+      desiredInputRef.current.active = false;
+      desiredInputRef.current.strength = 0;
+      if (isFlick) boostAddRef.current += 15;
       drag.current = null;
     };
 
@@ -401,10 +396,22 @@ export default function CanvasGame({ levelId }: Props) {
           const spacePrev = prevSpaceDownRef.current;
           if (spaceNow && !spacePrev) next.input.boostTicks += 15;
           prevSpaceDownRef.current = spaceNow;
+        }
+        // Apply touch/mouse desired input, overriding keyboard if active
+        const d = desiredInputRef.current;
+        if (d.active || d.strength > 0) {
+          next.input.active = d.active;
+          next.input.dir = { x: d.dir.x, y: d.dir.y };
+          next.input.strength = d.strength;
         } else if (!next.input.active) {
           next.input.strength = 0;
-          prevSpaceDownRef.current = false;
         }
+        // Merge queued boost from flicks
+        if (boostAddRef.current > 0) {
+          next.input.boostTicks += boostAddRef.current;
+          boostAddRef.current = 0;
+        }
+        prevSpaceDownRef.current = spaceDownRef.current;
       }
 
       // SFX bump edge detection baseline

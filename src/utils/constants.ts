@@ -12,7 +12,7 @@ export const MAX_FRAME_DT = 0.25; // seconds; clamp absurd stalls (e.g., tab bac
 export const MAX_SPEED = 128; // was 120 (~+6.7%)
 export const BOOST_EXTRA = 52; // was 50 (scaled with top speed)
 export const ACCEL = 225; // was 210 (~+7%)
-export const FRICTION = 131; // tiny bump to keep control similar
+export const FRICTION = 120; // slightly lower to help sustain motion from touch input
 export const TURN_RATE = Math.PI * 1.2; // slightly quicker steering
 
 // Extra damping applied specifically to lateral (sideways) velocity per second
