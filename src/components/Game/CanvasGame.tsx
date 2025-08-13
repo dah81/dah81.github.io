@@ -5,7 +5,7 @@ import { paths } from "@/utils/paths";
 // import { useRouter } from "next/navigation"; // router not needed after removing auto-return
 import { createGame, integrate, fromInputDrag } from "@/utils/gameLogic";
 import { LEVELS, findLevel } from "@/utils/levels";
-import { PALETTE } from "@/utils/constants";
+import { PALETTE, DT, MAX_SUBSTEPS, MAX_FRAME_DT } from "@/utils/constants";
 import { markComplete, getBestTime, setBestTime, getProgress } from "@/utils/progress";
 import { updateHighScores } from "@/utils/highScores";
 import type { GameState, Level } from "@/types/game";
@@ -16,17 +16,7 @@ import { PIXEL_PALETTE, createDitherPattern } from "@/utils/palette";
 type FXParticle = { x: number; y: number; vx: number; vy: number; life: number; max: number };
 type FXTrailPoint = { x: number; y: number; t: number };
 
-const useRaf = (cb: () => void) => {
-  useEffect(() => {
-    let raf = 0;
-    const loop = () => {
-      cb();
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [cb]);
-};
+// (Deprecated) useRaf helper was replaced by a fixed-timestep accumulator loop below
 
 interface Props {
   levelId: string;
@@ -54,6 +44,21 @@ export default function CanvasGame({ levelId }: Props) {
   const particlesRef = useRef<FXParticle[]>([]);
   const trailRef = useRef<FXTrailPoint[]>([]);
   const [effectsOn, setEffectsOn] = useState(true);
+  // Fixed-timestep loop state
+  const lastTimeRef = useRef<number | null>(null);
+  const accRef = useRef(0); // seconds
+  const stateRef = useRef<GameState>(state);
+  const fxTimeMsRef = useRef(0); // effects clock in ms
+  // Live refs for values used inside the rAF loop
+  const effectsOnRef = useRef(effectsOn);
+  useEffect(() => {
+    effectsOnRef.current = effectsOn;
+  }, [effectsOn]);
+  const completedRef = useRef(completed);
+  useEffect(() => {
+    completedRef.current = completed;
+  }, [completed]);
+  // isFinalLevelRef depends on isFinalLevel; initialize after it's declared below
   // First-time touch users hint
   const [showDragHint, setShowDragHint] = useState(false);
   const showDragHintRef = useRef(false);
@@ -99,6 +104,11 @@ export default function CanvasGame({ levelId }: Props) {
   >([]);
   const initialDirtAvgRef = useRef<number>(0);
   const isFinalLevel = useMemo(() => LEVELS[LEVELS.length - 1]?.id === levelId, [levelId]);
+  // Keep a live ref for isFinalLevel so rAF loop reads current value without re-subscribing
+  const isFinalLevelRef = useRef(isFinalLevel);
+  useEffect(() => {
+    isFinalLevelRef.current = isFinalLevel;
+  }, [isFinalLevel]);
 
   // Build summary after completing final level
   useEffect(() => {
@@ -156,6 +166,11 @@ export default function CanvasGame({ levelId }: Props) {
   useEffect(() => {
     zFramesRef.current = buildZamboniSprites(state.z.length, state.z.width, 2);
   }, [state.z.length, state.z.width]);
+
+  // Keep ref in sync for loop
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Load/save effects toggle
   useEffect(() => {
@@ -315,19 +330,24 @@ export default function CanvasGame({ levelId }: Props) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       // Prevent scrolling with arrows/space
-      const prevent = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "Space"].includes(
-        e.key,
-      );
+      const prevent = [
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+        " ",
+        "Space",
+        "Spacebar",
+      ].includes(e.key);
       if (prevent) e.preventDefault();
-      if (completed) return;
       keysRef.current.add(e.key);
-      if (e.key === " " || e.key === "Space") {
+      if (e.key === " " || e.key === "Space" || e.key === "Spacebar") {
         spaceDownRef.current = true;
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       keysRef.current.delete(e.key);
-      if (e.key === " " || e.key === "Space") {
+      if (e.key === " " || e.key === "Space" || e.key === "Spacebar") {
         spaceDownRef.current = false;
       }
     };
@@ -339,51 +359,70 @@ export default function CanvasGame({ levelId }: Props) {
     };
   }, [completed]);
 
-  // Game loop: fixed timestep integrate, render
-  useRaf(() => {
-    setState((prev) => {
-      if (completed) return prev;
-      const next = { ...prev };
-      // If keyboard keys are pressed, map them to input dir/strength
-      const keys = keysRef.current;
-      if (keys.size > 0) {
-        // Compute directional intent
-        const left = keys.has("ArrowLeft") || keys.has("a") || keys.has("A");
-        const right = keys.has("ArrowRight") || keys.has("d") || keys.has("D");
-        const up = keys.has("ArrowUp") || keys.has("w") || keys.has("W");
-        const down = keys.has("ArrowDown") || keys.has("s") || keys.has("S");
-        let dx = (right ? 1 : 0) - (left ? 1 : 0);
-        let dy = (down ? 1 : 0) - (up ? 1 : 0);
-        if (dx !== 0 || dy !== 0) {
-          const len = Math.hypot(dx, dy);
-          dx /= len;
-          dy /= len;
-          // Apply full throttle for any direction key (so Left/Right alone move the sprite)
-          next.input.active = true;
-          next.input.dir = { x: dx, y: dy };
-          next.input.strength = 1;
-        } else {
-          // no direction keys pressed; keep input inactive unless touch active
-          if (!next.input.active) next.input.strength = 0;
+  // Game loop: fixed-timestep accumulator to decouple sim speed from rAF frequency
+  useEffect(() => {
+    let raf = 0;
+    const stepFrame = (nowMs: number) => {
+      const now = nowMs / 1000; // seconds
+      const last = lastTimeRef.current ?? now;
+      let dt = now - last;
+      lastTimeRef.current = now;
+
+      // Clamp absurd stalls (e.g., tab background)
+      if (dt < 0) dt = 0;
+      if (dt > MAX_FRAME_DT) dt = MAX_FRAME_DT;
+
+      accRef.current += dt;
+
+      // Work on a fresh copy so React can detect state change for HUD
+      const next = { ...stateRef.current } as GameState;
+
+      // Map keyboard input once per frame to desired direction/strength
+      if (!completedRef.current) {
+        const keys = keysRef.current;
+        if (keys.size > 0) {
+          const left = keys.has("ArrowLeft") || keys.has("a") || keys.has("A");
+          const right = keys.has("ArrowRight") || keys.has("d") || keys.has("D");
+          const up = keys.has("ArrowUp") || keys.has("w") || keys.has("W");
+          const down = keys.has("ArrowDown") || keys.has("s") || keys.has("S");
+          let dx = (right ? 1 : 0) - (left ? 1 : 0);
+          let dy = (down ? 1 : 0) - (up ? 1 : 0);
+          if (dx !== 0 || dy !== 0) {
+            const l = Math.hypot(dx, dy);
+            dx /= l;
+            dy /= l;
+            next.input.active = true;
+            next.input.dir = { x: dx, y: dy };
+            next.input.strength = 1;
+          } else if (!next.input.active) {
+            next.input.strength = 0;
+          }
+          const spaceNow = spaceDownRef.current;
+          const spacePrev = prevSpaceDownRef.current;
+          if (spaceNow && !spacePrev) next.input.boostTicks += 15;
+          prevSpaceDownRef.current = spaceNow;
+        } else if (!next.input.active) {
+          next.input.strength = 0;
+          prevSpaceDownRef.current = false;
         }
-        // Handle Space boost on edge
-        const spaceNow = spaceDownRef.current;
-        const spacePrev = prevSpaceDownRef.current;
-        if (spaceNow && !spacePrev) {
-          next.input.boostTicks += 15;
-        }
-        prevSpaceDownRef.current = spaceNow;
-      } else {
-        // if no keys, revert to touch behavior (zero throttle if inactive)
-        if (!next.input.active) next.input.strength = 0;
-        prevSpaceDownRef.current = false;
       }
-      // if no active input, keep previous dir but zero throttle
-      // Remember previous contact for SFX edge detection
+
+      // SFX bump edge detection baseline
       const prevContact = next.wallContact;
-      // Integrate physics
-      integrate(next);
-      // SFX: engine hum level based on current input throttle and speed
+
+      // Step the simulation at a fixed heartbeat
+      let sub = 0;
+      while (accRef.current >= DT && sub < MAX_SUBSTEPS && !completedRef.current) {
+        integrate(next); // advances by DT internally
+        // Effects: advance sparkle/trail at the same cadence
+        if (effectsOnRef.current) updateEffectsFixed(next, particlesRef, trailRef, fxTimeMsRef, DT);
+        accRef.current -= DT;
+        sub++;
+      }
+      // If too much accumulated, drop remainder to avoid time warp
+      if (sub >= MAX_SUBSTEPS) accRef.current = 0;
+
+      // SFX: engine and bump after stepping
       try {
         type SfxApi = {
           setEngine?: (lvl: number, sp?: number) => void;
@@ -393,91 +432,83 @@ export default function CanvasGame({ levelId }: Props) {
         if (api?.setEngine) {
           const throttle = next.input.strength || 0;
           const speed = Math.hypot(next.z.vel.x, next.z.vel.y);
-          // Normalize speed roughly against MAX_SPEED (import avoided to keep client minimal)
           const speedNorm = Math.min(1, speed / 180);
           api.setEngine(throttle, speedNorm);
         }
         if (!prevContact && next.wallContact && api?.bump) {
-          // Intensity scales with impact speed perpendicular to wall; use speed proxy
           const impact = Math.min(1, Math.hypot(next.z.vel.x, next.z.vel.y) / 220);
           api.bump(impact);
         }
       } catch {}
-      if (next.completed && !completed) {
-        // persist progress once per completion
+
+      // Handle completion once
+      if (next.completed && !completedRef.current) {
         try {
           markComplete(next.level.id);
         } catch {}
         setCompleted(true);
         completedAtRef.current = performance.now();
-        // compute grade and par
         const initAvg = initialDirtAvgRef.current || computeGridAvg(next.level.dirt);
         const par = computePar(next.level.rink.width, next.level.rink.height, initAvg);
         setParTime(par);
-        // Apply bump-based modifier: very soft penalty tiers
         const bumpPenalty = next.bumpCount <= 1 ? 0 : next.bumpCount <= 3 ? 0.02 : 0.05;
         const g = computeGrade(next.elapsed * (1 + bumpPenalty), par);
         setGrade(g);
-        // Persist and fetch best time
         const prevBest = getBestTime(next.level.id);
         const saved = setBestTime(next.level.id, next.elapsed);
         setBestTimeState(prevBest === null ? saved : Math.min(prevBest, next.elapsed));
-        // Trigger celebratory cheer after grade calc, intensity by grade
         try {
           type SfxApi = { cheer?: (i?: number) => void };
           const api = (window as unknown as { ZAMBONI_AUDIO?: SfxApi }).ZAMBONI_AUDIO;
           let intensity = g === "Cup winner" ? 1 : g === "Playoff contender" ? 0.8 : 0.6;
-          if (isFinalLevel) intensity = 1.2; // slight boost on final completion
+          if (isFinalLevelRef.current) intensity = 1.2;
           api?.cheer?.(intensity);
         } catch {}
-        // Update global high scores
         try {
           updateHighScores(next.level.id, next.elapsed, next.bumpCount, next.cleanedPercent);
         } catch {}
-        // spawn confetti
-        confettiRef.current = spawnConfetti(next.level, isFinalLevel);
+        confettiRef.current = spawnConfetti(next.level, isFinalLevelRef.current);
       }
-      return next;
-    });
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    // Ensure backbuffer exists
-    if (!backbufferRef.current) {
-      const bb = document.createElement("canvas");
-      bb.width = BB_W;
-      bb.height = BB_H;
-      const bctx = bb.getContext("2d");
-      if (bctx) noSmooth(bctx);
-      backbufferRef.current = bb;
-    }
-    // Update particle system and trail using last known state
-    if (effectsOn) {
-      updateEffects(state, particlesRef, trailRef);
-    } else {
-      // still maintain a tiny trail buffer for visuals off (cleared fast)
-      trailRef.current = [];
-      particlesRef.current = [];
-    }
-    // Update celebration confetti if active
-    if (completedAtRef.current !== null) {
-      updateConfetti(confettiRef);
-    }
+      // Update confetti with a simple fixed step approximation (kept as-is)
+      if (completedAtRef.current !== null) updateConfetti(confettiRef);
 
-    drawPixelPerfect(
-      canvas,
-      backbufferRef.current,
-      state,
-      BB_W,
-      BB_H,
-      (zFramesRef.current as HTMLCanvasElement[][] | null) || undefined,
-      particlesRef.current,
-      trailRef.current,
-      effectsOn,
-      confettiRef.current,
-      completedAtRef.current,
-    );
-  });
+      // Commit state for HUD/overlays and keep ref in sync
+      stateRef.current = next;
+      setState(next);
+
+      // Ensure backbuffer
+      const canvas = canvasRef.current;
+      if (canvas) {
+        if (!backbufferRef.current) {
+          const bb = document.createElement("canvas");
+          bb.width = BB_W;
+          bb.height = BB_H;
+          const bctx = bb.getContext("2d");
+          if (bctx) noSmooth(bctx);
+          backbufferRef.current = bb;
+        }
+        drawPixelPerfect(
+          canvas,
+          backbufferRef.current,
+          next,
+          BB_W,
+          BB_H,
+          (zFramesRef.current as HTMLCanvasElement[][] | null) || undefined,
+          particlesRef.current,
+          trailRef.current,
+          effectsOnRef.current,
+          confettiRef.current,
+          completedAtRef.current,
+        );
+      }
+
+      raf = requestAnimationFrame(stepFrame);
+    };
+
+    raf = requestAnimationFrame(stepFrame);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   useEffect(() => {
     // redraw on size change
@@ -1508,12 +1539,15 @@ function getSqueegeePos(state: GameState) {
   return { x: z.pos.x - Math.cos(z.heading) * off, y: z.pos.y - Math.sin(z.heading) * off };
 }
 
-function updateEffects(
+function updateEffectsFixed(
   state: GameState,
   particlesRef: React.MutableRefObject<FXParticle[]>,
   trailRef: React.MutableRefObject<FXTrailPoint[]>,
+  fxTimeMsRef: React.MutableRefObject<number>,
+  dtSec: number,
 ) {
-  const now = performance.now();
+  // Advance a deterministic effects clock so visuals match sim cadence
+  const now = (fxTimeMsRef.current += dtSec * 1000);
   const MAX_PARTICLES = 320;
   const squeegee = getSqueegeePos(state);
   // Lateral unit vector (perpendicular to heading) to spread sparkle band wider than gloss
@@ -1558,7 +1592,7 @@ function updateEffects(
     });
   }
   // Integrate particles
-  const dt = 16; // approx ms per frame; we keep it simple
+  const dt = dtSec * 1000; // ms per fixed step (e.g., ~16.67ms at 60Hz)
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i];
     p.life += dt;

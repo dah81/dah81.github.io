@@ -3,6 +3,9 @@ import type { Palette } from "@/types/game";
 export const TICK_RATE = 60; // Hz
 export const DT = 1 / TICK_RATE;
 export const BOOST_TICKS = Math.floor(0.25 * TICK_RATE); // 250ms
+// Fixed-step accumulator limits
+export const MAX_SUBSTEPS = 4; // maximum simulation steps per frame to prevent catch-up spirals
+export const MAX_FRAME_DT = 0.25; // seconds; clamp absurd stalls (e.g., tab backgrounded)
 
 // Movement tuning (rolled back to original balanced feel)
 // Slight incremental speed tweak: modestly higher top speed & acceleration.
